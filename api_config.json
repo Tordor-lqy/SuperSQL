@@ -1,0 +1,12 @@
+{
+  "srf": [
+    {
+      "uri": "/v1/get/all/srf_ai_chat",
+      "method": "GET",
+      "query": [
+        "ai_chat_session_id"
+      ],
+      "sql": "select * from srf_ai_chat where ai_chat_session_id = %s"
+    }
+  ]
+}

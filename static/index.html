@@ -1,0 +1,707 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>Super SQL - Tordor</title>
+    <script src="/static/vue2.js"></script>
+    <script src="/static/vue-prism-editor.js"></script>
+    <link
+            rel="stylesheet"
+            href="/static/prismeditor.min.css"
+    />
+    <script src="/static/prism.js"></script>
+    <link
+            rel="stylesheet"
+            href="/static/prism-tomorrow.css"
+    />
+    <script src="/static/base64.min.js"></script>
+    <script src="/static/axios.min.js"></script>
+    <script src="https://unpkg.com/vue-toasted"></script>
+    <link rel="stylesheet"
+          href="/static/supersql.css">
+</head>
+<body>
+<div id="app">
+    <div
+            class="list-container"
+            style="
+          display: flex;
+          justify-content: space-between;
+          align-items: flex-end;
+          border-bottom: 1px solid #ddd;
+        "
+    >
+        <h1>SUPERSQL</h1>
+        <div class="tabs" style="height: min-content">
+            <div
+                    :class="{tab:true , active: selectedTab === 'apis'}"
+                    @click="selectedTab = 'apis';toast('selected api' , 'info')"
+            >
+                APIs
+            </div>
+            <div
+                    :class="{tab:true , active: selectedTab === 'databases'}"
+                    @click="selectedTab = 'databases';toast('selected database' , 'info')"
+            >
+                Databases
+            </div>
+        </div>
+    </div>
+
+    <div
+            id="databases"
+            :style="{display : selectedTab === 'databases' ? 'block' : 'none'}"
+            class="tab-content active"
+    >
+        <div class="list-container">
+            <div
+                    class="bar"
+                    style="display: flex; justify-content: space-between"
+            >
+                <h2>DATABASE LIST</h2>
+                <button style="height: min-content" @click="openAddDBDialog">
+                    Add DB
+                </button>
+            </div>
+            <div
+                    v-for="db in dbList"
+                    :key="db.db_id"
+                    class="list-item"
+                    @click="openDBDialog(db)"
+            >
+                {{ db.db_type.toUpperCase() }} {{ db.db_name }}/{{ db.db_host }}
+            </div>
+        </div>
+    </div>
+
+    <div
+            id="apis"
+            :style="{display : selectedTab === 'apis' ? 'block' : 'none'}"
+            class="tab-content"
+    >
+        <div class="list-container">
+            <div
+                    class="bar"
+                    style="display: flex; justify-content: space-between"
+            >
+                <h2>API LIST</h2>
+                <button style="height: min-content" @click="addAPI">Add API</button>
+            </div>
+            <div
+                    v-for="item in data"
+                    :key="item.api_id"
+                    class="list-item"
+                    @click="openDialog(item);"
+                    :style="{
+              'display': 'flex',
+              'justify-content': 'space-between',
+              'align-items': 'center',
+              'border' : `1px solid ${item.api_on ? 'green' : 'gray'}`
+            }
+            "
+            >
+                <div>
+              <span
+                      :style="{color: methodColor[item.api_method], 'margin-right' : '10px'} "
+              >
+                {{ item.api_method }}
+              </span>
+                    {{ item.api_uri }}
+                </div>
+
+                <div style="display: flex; justify-content: space-between">
+                    <div
+                            class="pre-icon"
+                            style="background-color: #0056b3"
+                            v-if="praseJSONBase(item.api_query).length > 0"
+                    >
+                        query
+                    </div>
+                    <div
+                            class="pre-icon"
+                            style="background-color: orange"
+                            v-if="item.api_is_use_body"
+                    >
+                        json
+                    </div>
+                    <!-- <div class="pre-icon" v-if="">on</div> -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div v-if="showDialog" class="dialog-overlay">
+        <div class="dialog-box">
+            <h3>接口信息</h3>
+            <div class="dialog-content">
+                <hr/>
+                配置
+                <input
+                        type="text"
+                        v-model="dialogData.api_method"
+                        placeholder="请求方法"
+                />
+                <input
+                        type="text"
+                        v-model="dialogData.api_uri"
+                        placeholder="接口地址"
+                />
+                <!-- <input
+                  type="text"
+                  v-model="dialogData.api_sql"
+                  placeholder="SQL语句"
+                /> -->
+
+                <hr/>
+                <div
+                        style="
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+              "
+                >
+                    Query参数
+                    <button @click="addQuery">Add Query</button>
+                </div>
+
+                <div class="qs">
+                    <div v-for="(query, index) in dialogData.api_query" :key="index">
+                        <input
+                                v-model="dialogData.api_query[index]"
+                                placeholder="参数"
+                                style="display: inline-block; width: 80%"
+                        />
+                        <button
+                                style="background-color: red"
+                                @click="dialogData.api_query.splice(index , 1)"
+                        >
+                            delete
+                        </button>
+                    </div>
+                </div>
+
+                <div
+                        style="
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+              "
+                >
+                    启用body/json参数
+                    <div class="dialog-content" style="transform: scale(0.6)">
+                        <label class="switch">
+                            <input type="checkbox" v-model="dialogData.api_is_use_body"/>
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                </div>
+
+                <hr/>
+                数据库
+                <select v-model="dialogData.api_db_id">
+                    <option v-for="db in dbList" :key="db.db_id" :value="db.db_id">
+                        {{ db.db_name }} - {{ db.db_host }}
+                    </option>
+                </select>
+
+                <hr/>
+                <div
+                        style="
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+              "
+                >
+                    启用python script
+                    <div class="dialog-content" style="transform: scale(0.6)">
+                        <label class="switch">
+                            <input
+                                    type="checkbox"
+                                    v-model="dialogData.api_is_use_script"
+                            />
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                </div>
+
+                <div v-if="dialogData.api_is_use_script">
+                    <prism-editor
+                            class="my-editor height-200"
+                            v-model="dialogData.api_script"
+                            :highlight="highlighter"
+                            line-numbers
+                    ></prism-editor>
+                </div>
+
+                <hr/>
+                SQL(Jinja2)模版
+                <prism-editor
+                        class="my-editor height-200"
+                        v-model="dialogData.api_sql"
+                        :highlight="highlighter"
+                        line-numbers
+                ></prism-editor>
+
+                <hr/>
+                <div
+                        style="
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+              "
+                >
+                    启用python 后置 script
+                    <div class="dialog-content" style="transform: scale(0.6)">
+                        <label class="switch">
+                            <input
+                                    type="checkbox"
+                                    v-model="dialogData.api_is_use_post_script"
+                            />
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                </div>
+
+                <div v-if="dialogData.api_is_use_post_script">
+                    <prism-editor
+                            class="my-editor height-200"
+                            v-model="dialogData.api_post_script"
+                            :highlight="highlighter"
+                            line-numbers
+                    ></prism-editor>
+                </div>
+
+                <div style="display: flex; justify-content: space-around">
+                    <button @click="updateAPI">Confirm Update API</button>
+                    <button @click="deleteAPI" style="background-color: red">
+                        Delete
+                    </button>
+                    <button @click="testAPI" style="background-color: green">
+                        Test
+                    </button>
+                    <button
+                            @click="showDialog = false"
+                            style="background-color: gray"
+                    >
+                        close
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div v-if="addAPIDialog" class="dialog-overlay">
+        <div class="dialog-box">
+            <h3>接口信息</h3>
+            <div class="dialog-content">
+                <hr/>
+                配置
+                <input
+                        type="text"
+                        v-model="dialogData.api_method"
+                        placeholder="请求方法"
+                />
+                <input
+                        type="text"
+                        v-model="dialogData.api_uri"
+                        placeholder="接口地址"
+                />
+                <!-- <input
+                  type="text"
+                  v-model="dialogData.api_sql"
+                  placeholder="SQL语句"
+                /> -->
+                <hr/>
+                SQL语句
+                <prism-editor
+                        class="my-editor height-200"
+                        v-model="dialogData.api_sql"
+                        :highlight="highlighter"
+                        line-numbers
+                ></prism-editor>
+                <hr/>
+                数据库
+                <select v-model="dialogData.api_db_id">
+                    <option v-for="db in dbList" :key="db.db_id" :value="db.db_id">
+                        {{ db.db_name }} - {{ db.db_host }}
+                    </option>
+                </select>
+                <hr/>
+                变量 Query参数
+                <div class="qs">
+                    <input
+                            v-for="(query, index) in dialogData.api_query"
+                            :key="index"
+                            v-model="dialogData.api_query[index]"
+                            placeholder="参数"
+                    />
+                </div>
+                <div style="display: flex; justify-content: space-around">
+                    <button @click="addQuery">Add Query</button>
+                    <button @click="insertAPI">Confirm Add API</button>
+                    <button @click="testAPI" style="background-color: green">
+                        Test
+                    </button>
+                    <button
+                            @click="addAPIDialog = false"
+                            style="background-color: gray"
+                    >
+                        Close
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div v-if="showDBDialog" class="dialog-overlay">
+        <div class="dialog-box">
+            <h3>数据库信息</h3>
+            <div class="dialog-content">
+                <hr/>
+                配置
+                <input
+                        type="text"
+                        v-model="dialogDBData.db_type"
+                        placeholder="数据库类型"
+                />
+                <input
+                        type="text"
+                        v-model="dialogDBData.db_name"
+                        placeholder="数据库名称"
+                />
+                <input
+                        type="text"
+                        v-model="dialogDBData.db_host"
+                        placeholder="数据库地址"
+                />
+                <input
+                        type="text"
+                        v-model="dialogDBData.db_port"
+                        placeholder="数据库端口"
+                />
+                <input
+                        type="text"
+                        v-model="dialogDBData.db_user"
+                        placeholder="数据库用户名"
+                />
+                <input
+                        type="password"
+                        v-model="dialogDBData.db_password"
+                        placeholder="数据库密码"
+                />
+                <hr/>
+                <div style="display: flex; justify-content: space-around">
+                    <button @click="updateDB">Confirm Update DB</button>
+                    <button @click="deleteDB" style="background-color: red">
+                        Delete
+                    </button>
+                    <button
+                            @click="showDBDialog = false"
+                            style="background-color: gray"
+                    >
+                        Close
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div v-if="addDBDialog" class="dialog-overlay">
+        <div class="dialog-box">
+            <h3>数据库信息</h3>
+            <div class="dialog-content">
+                <hr/>
+                配置
+                <input
+                        type="text"
+                        v-model="dialogDBData.db_type"
+                        placeholder="数据库类型"
+                />
+                <input
+                        type="text"
+                        v-model="dialogDBData.db_name"
+                        placeholder="数据库名称"
+                />
+                <input
+                        type="text"
+                        v-model="dialogDBData.db_host"
+                        placeholder="数据库地址"
+                />
+                <input
+                        type="text"
+                        v-model="dialogDBData.db_port"
+                        placeholder="数据库端口"
+                />
+                <input
+                        type="text"
+                        v-model="dialogDBData.db_user"
+                        placeholder="数据库用户名"
+                />
+                <input
+                        type="password"
+                        v-model="dialogDBData.db_password"
+                        placeholder="数据库密码"
+                />
+                <hr/>
+                <div style="display: flex; justify-content: space-around">
+                    <button @click="addDB">Confirm Add DB</button>
+                    <button
+                            @click="addDBDialog = false"
+                            style="background-color: gray"
+                    >
+                        Close
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+</body>
+</html>
+
+<script>
+    Vue.use(Toasted);
+
+    new Vue({
+        el: "#app",
+        data: {
+            selectedTab: "apis",
+            methodColor: {
+                GET: "green",
+                POST: "orange",
+                PUT: "blue",
+                DELETE: "red",
+            },
+            baseURL: "http://127.0.0.1:5000",
+            data: [],
+            dbList: [],
+            showDialog: false,
+            addAPIDialog: false,
+            dialogData: {
+                api_method: "",
+                api_uri: "",
+                api_sql: "",
+                api_db_id: "",
+                api_query: [],
+                api_is_use_body: false,
+                api_script: "",
+                api_is_use_script: false,
+                api_post_script: "",
+                api_is_use_post_script: false,
+            },
+            dialogDBData: {
+                db_type: "",
+                db_name: "",
+                db_host: "",
+                db_port: "",
+                db_user: "",
+                db_password: "",
+            },
+            showDBDialog: false,
+            addDBDialog: false,
+        },
+        created() {
+            this.fetchData();
+            this.fetchDbList();
+        },
+        methods: {
+            toast(text, color) {
+                this.$toasted.show(text, {
+                    theme: "outline",
+                    position: "top-right",
+                    type: color,
+                    duration: 3000,
+                });
+            },
+            praseJSONBase(str) {
+                return JSON.parse(Base64.decode(str));
+            },
+            highlighter(code) {
+                // js highlight example
+                return Prism.highlight(code, Prism.languages.js, "mysql");
+            },
+            selectTab(tab) {
+                document.querySelectorAll(".tab").forEach((tabElement) => {
+                    tabElement.classList.remove("active");
+                });
+                document.querySelectorAll(".tab-content").forEach((content) => {
+                    content.classList.remove("active");
+                });
+                document.querySelector(`#${tab}`).classList.add("active");
+                document.querySelector(`[data-tab="${tab}"]`).classList.add("active");
+            },
+            fetchData() {
+                axios
+                    .get(this.baseURL + "/super/get/all/api")
+                    .then((response) => {
+                        this.data = response.data;
+                    })
+                    .catch((error) => {
+                        console.log(error);
+                    });
+            },
+            fetchDbList() {
+                axios
+                    .get(this.baseURL + "/super/get/all/database")
+                    .then((response) => {
+                        this.dbList = response.data;
+                    })
+                    .catch((error) => {
+                        console.log(error);
+                    });
+            },
+            deleteAPI() {
+                axios
+                    .delete(
+                        this.baseURL +
+                        "/super/delete/api?api_config_id=" +
+                        this.dialogData.api_config_id
+                    )
+                    .then((response) => {
+                        this.fetchData();
+                        this.showDialog = false;
+                    })
+                    .catch((error) => {
+                        console.log(error);
+                    });
+            },
+            updateAPI() {
+                apiBody = this.dialogData;
+                apiBody.api_query = Base64.encode(
+                    JSON.stringify(
+                        this.dialogData.api_query.filter((item) => item !== "")
+                    )
+                );
+                apiBody.api_is_use_body = this.dialogData.api_is_use_body ? 1 : 0;
+                apiBody.api_is_use_script = this.dialogData.api_is_use_script ? 1 : 0;
+                apiBody.api_is_use_post_script = this.dialogData.api_is_use_post_script
+                    ? 1
+                    : 0;
+                apiBody.api_script = Base64.encode(
+                    JSON.stringify(this.dialogData.api_script)
+                );
+                apiBody.api_post_script = Base64.encode(
+                    JSON.stringify(this.dialogData.api_post_script)
+                );
+                axios
+                    .post(this.baseURL + "/super/update/api", apiBody)
+                    .then((response) => {
+                        console.log(response.data);
+                        this.fetchData();
+                        this.showDialog = false;
+                        this.toast("API update success", "success");
+                    })
+                    .catch((error) => {
+                        console.log(error);
+                    });
+            },
+            testAPI() {
+                location.href = `${this.baseURL}/api${
+                    this.dialogData.api_uri
+                }?${this.dialogData.api_query
+                    .filter((item) => item !== "")
+                    .join("=&")}`;
+            },
+            openDialog(item) {
+                this.dialogData = {
+                    ...item,
+                    api_query: JSON.parse(Base64.decode(item.api_query)),
+                    api_script:
+                        item.api_script === null
+                            ? ""
+                            : JSON.parse(Base64.decode(item.api_script)),
+                    api_post_script:
+                        item.api_post_script === null
+                            ? ""
+                            : JSON.parse(Base64.decode(item.api_post_script)),
+                };
+                this.showDialog = true;
+            },
+            addAPI() {
+                this.addAPIDialog = true;
+                this.dialogData = {
+                    api_method: "",
+                    api_uri: "",
+                    api_sql: "",
+                    api_db_id: "",
+                    api_query: [],
+                };
+            },
+            insertAPI() {
+                apiBody = this.dialogData;
+                apiBody.api_query = Base64.encode(
+                    JSON.stringify(
+                        this.dialogData.api_query.filter((item) => item !== "")
+                    )
+                );
+                axios
+                    .post(this.baseURL + "/super/insert/api", apiBody)
+                    .then((response) => {
+                        console.log(response.data);
+                        this.fetchData();
+                        this.addAPIDialog = false;
+                    })
+                    .catch((error) => {
+                        console.log(error);
+                    });
+            },
+            addQuery() {
+                this.dialogData.api_query.push("");
+            },
+            openDBDialog(item) {
+                this.dialogDBData = {
+                    ...item,
+                };
+                this.showDBDialog = true;
+            },
+            updateDB() {
+                axios
+                    .post(this.baseURL + "/super/update/database", this.dialogDBData)
+                    .then((response) => {
+                        this.fetchDbList();
+                        this.showDBDialog = false;
+                    })
+                    .catch((error) => {
+                        console.log(error);
+                    });
+            },
+            deleteDB(item) {
+                axios
+                    .delete(
+                        `${this.baseURL}/super/delete/database?db_id=${this.dialogDBData.db_id}`
+                    )
+                    .then((response) => {
+                        this.fetchDbList();
+                        this.showDBDialog = false;
+                        this.toast("API delete success", "success");
+                    })
+                    .catch((error) => {
+                        console.log(error);
+                        this.toast(error, "error");
+                    });
+            },
+            addDB() {
+                axios
+                    .post(this.baseURL + "/super/insert/database", this.dialogDBData)
+                    .then((response) => {
+                        this.fetchDbList();
+                        this.addDBDialog = false;
+                    })
+                    .catch((error) => {
+                        console.log(error);
+                    });
+            },
+            openAddDBDialog() {
+                this.dialogDBData = {
+                    db_name: "",
+                    db_host: "",
+                    db_port: "",
+                    db_user: "",
+                    db_password: "",
+                };
+                this.addDBDialog = true;
+            },
+        },
+    });
+</script>
